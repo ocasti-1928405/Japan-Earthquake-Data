@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="utf-8">
+    <title>Parks & Trails List</title> 
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.5.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.5.0/mapbox-gl.js"></script>
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, 
+                 Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+       
+        #container {
+            position: relative; 
+            height: 100vh;
+        }
+
+        
+        #side-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10; /* Ensures it's on top of the map */
+            
+            width: 450px; 
+            background-color: rgba(255, 255, 255, 0.95); 
+            backdrop-filter: blur(4px); 
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            
+            /* Allow scrolling within the panel if table is long */
+            max-height: calc(100vh - 40px); 
+            overflow-y: auto;
+        }
+        #side-panel h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-top: 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+}
+
+        /*
+         * Make map 'absolute' and set to 100% width/height
+         * to fill the entire screen under the side panel.
+         */
+        #map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /*
+         * Add a media query. When screen width is 1024px or less, 
+           hide the side panel completely.
+         */
+        @media (max-width: 1024px) {
+            #side-panel {
+                display: none;
+            }
+        }
+
+
+        /* --- Table Styles (Unchanged) --- */
+        table {
+            border-collapse: collapse;
+            border-spacing: 0;
+            width: 100%;
+        }
+
+        th,
+td {
+    text-align: left;
+    padding: 16px;
+    /* Add a standard border to the bottom of all cells */
+    border-bottom: 1px solid #ddd; 
+}
+
+th {
+    /* Make headers stand out */
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #555;
+    background-color: #fcfcfc; /* A very light gray */
+    border-bottom: 2px solid #333; /* Your existing dark line */}
+
+        th {
+            cursor: pointer; /* Add pointer to show headers are clickable */
+            background-color: #f9f9f9;
+        }
+        
+        th:hover {
+            background-color: #f0f0f0; /* Light gray highlight on hover */        }
+
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+
+<body>
+    
+    <main id="container">
+        
+        <div id="map"></div>
+        
+        <div id="side-panel">
+            <h2>Parks & Trails List</h2>
+            
+            <table id="myTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable(0)">Park Name</th>
+                        <th onclick="sortTable(1)">Site Type</th>
+                        <th onclick="sortTable(2)">Owner</th>
+                    </tr>
+                </thead>
+                </table>
+        </div>
+        
+    </main>
+
+    <script>
+        // THIS IS WHERE YOU PUT THE TOKEN
+        mapboxgl.accessToken = 'pk.eyJ1Ijoib2Nhc3RpIiwiYSI6ImNtaGJlcHR0bzBkbHEyam9hZjUxdTN2em8ifQ.1dlbHGkcsfz7UDrymlleLA';
+        
+        
+        let map = new mapboxgl.Map({
+            container: 'map', // container ID
+            
+            // Changed style to 'light-v11'
+            style: 'mapbox://styles/mapbox/light-v11', 
+            
+            zoom: 9.5, // starting zoom
+            center: [-122.2, 47.6] // starting center
+        });
+        
+        
+async function geojsonFetch() {
+        let response, parksData, trailsData, table; 
+        
+        response = await fetch('GEOjson/Parks.geojson');
+        parksData = await response.json(); 
+        response = await fetch('GEOjson/Trails.json');
+        trailsData = await response.json(); 
+
+        map.on('load', function loadingData() {
+
+            map.addSource('Parks', { 
+                type: 'geojson',
+                data: parksData 
+            });
+
+            map.addLayer({
+            'id': 'Parks-layer', 
+                'type': 'circle',
+                'source': 'Parks', 
+                'paint': {
+                    'circle-color': '#3a7d44', 
+                    
+                    'circle-radius': [
+                        'interpolate', ['linear'], ['zoom'],
+                        8, 2,  // At zoom 8, radius is 2px
+                        12, 5 // At zoom 12, radius is 5px
+                    ],
+
+                    'circle-stroke-width': 1, 
+                    // Make the white stroke slightly transparent
+                    'circle-stroke-color': 'rgba(255, 255, 255, 0.8)'
+                }
+            });
+
+            map.addSource('Trails', { 
+                type: 'geojson',
+                data: trailsData 
+            });
+
+            map.addLayer({
+                'id': 'Trails-layer', 
+                'type': 'line', 
+                'source': 'Trails', 
+                'paint': {
+                    'line-color': '#8B4513', 
+                    'line-width': 2
+                }
+            });
+        }); 
+
+        // --- THIS IS THE CORRECTED TABLE LOGIC ---
+
+        table = document.getElementById("myTable");
+        
+        // Get the <tbody> to append rows to, or create one.
+        let tableBody = table.getElementsByTagName('tbody')[0];
+        if (!tableBody) {
+            tableBody = document.createElement('tbody');
+            table.appendChild(tableBody);
+        }
+        
+        let row, cell1, cell2, cell3;
+
+        // This loop *only* iterates over parksData.
+        // It's the only loop that should be adding to your table.
+        for (let i = 0; i < parksData.features.length; i++) {
+            
+            let props = parksData.features[i].properties;
+            let siteName = props.SiteName;
+
+            // This check skips any features that *are* genuinely empty
+            // (even though yours isn't, this is good practice)
+            if (!siteName || siteName.trim() === "") {
+                continue;
+            }
+
+            row = tableBody.insertRow(-1); 
+            cell1 = row.insertCell(0);
+            cell2 = row.insertCell(1);
+            cell3 = row.insertCell(2);
+            
+            // Use the properties variable to populate cells
+            cell1.innerHTML = props.SiteName; 
+            cell2.innerHTML = props.SiteType; 
+            cell3.innerHTML = props.Owner; 
+        }
+    }; // End async function
+        geojsonFetch();
+        
+        
+
+function sortTable(n) {
+    let table = document.getElementById("myTable");
+    
+    
+    // This also fixes the race condition if you click before data loads.
+    let tbody = table.getElementsByTagName("tbody")[0];
+    if (!tbody) { 
+        return; 
+    }
+
+    
+    let dir = table.getAttribute("data-sort-dir") || "asc";
+    let currentSortCol = table.getAttribute("data-sort-col");
+
+    if (currentSortCol == n) {
+        dir = (dir === "asc") ? "desc" : "asc";
+    } else {
+        dir = "asc";
+    }
+    
+    table.setAttribute("data-sort-dir", dir);
+    table.setAttribute("data-sort-col", n);
+
+    
+    // Get all rows into a real Array
+    let rowsArray = Array.from(tbody.rows);
+
+    // Sort the array
+    let sortedRows = rowsArray.sort(function(rowA, rowB) {
+        // Get the text from the 'n'-th cell
+        let cellA = rowA.getElementsByTagName("TD")[n].textContent.toLowerCase();
+        let cellB = rowB.getElementsByTagName("TD")[n].textContent.toLowerCase();
+
+        // Use localeCompare for correct string comparison
+        if (dir === "asc") {
+            return cellA.localeCompare(cellB);
+        } else {
+            return cellB.localeCompare(cellA); // Flip comparison for 'desc'
+        }
+    });
+
+    
+    // Append each sorted row back into the tbody.
+    // Automatically removes form old position.
+    sortedRows.forEach(row => tbody.appendChild(row));
+}
+    </script>
+
+</body>
+</html>
